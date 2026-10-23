@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1920, 1080
 VOICE = os.environ.get("VOICE", "en-US-AriaNeural")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 CF_MODEL = os.environ.get("CF_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
