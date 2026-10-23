@@ -3,12 +3,21 @@ import asyncio, json, os, subprocess, sys, textwrap
 import edge_tts, requests
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1920, 1080
+MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ.get("MODE", "long")).lower()
+SHORT = MODE == "short"
+W, H = (1080, 1920) if SHORT else (1920, 1080)
+BRAND = "Fricomind"
 VOICE = os.environ.get("VOICE", "en-US-AriaNeural")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 CF_MODEL = os.environ.get("CF_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
+
+PROMPT_SHORT = """Write a 40-50 second YouTube Short for adults about: "{topic}".
+Open with a one-line hook that makes people stay. Tone: calm, clear, friendly, no hype, no get-rich promises. One concrete example with numbers, end with one action to take today. General education only.
+Return ONLY JSON: {{"title": str (under 60 chars, add #shorts), "description": str, "tags": [str],
+"scenes": [{{"keyword": str (1-2 plain words for stock footage), "heading": str (max 5 words), "bullets": [str, max 2, each max 6 words], "narration": str (14-24 words)}}]}}
+Use 5 to 6 scenes."""
 
 PROMPT = """Write a 4-5 minute YouTube explainer for adults about: "{topic}".
 Audience: beginners, English speakers worldwide. Tone: calm, clear, friendly, no hype, no get-rich promises.
@@ -36,11 +45,11 @@ def _cloudflare(p):
     return res if isinstance(res, str) else json.dumps(res)
 
 def script(topic):
-    p = PROMPT.format(topic=topic)
+    p = (PROMPT_SHORT if SHORT else PROMPT).format(topic=topic)
     for name, fn in (("groq", _groq), ("cloudflare", _cloudflare)):
         try:
             raw = fn(p); s = json.loads(raw[raw.index('{'):raw.rindex('}') + 1])
-            if len(s.get("scenes", [])) >= 6:
+            if len(s.get("scenes", [])) >= (4 if SHORT else 6):
                 print("script by", name); return s
             print(name, "returned too few scenes")
         except Exception as e:
@@ -56,14 +65,15 @@ def font(size, bold=False):
 def slide(path, heading, bullets, n, total, overlay=False):
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
-    y = 170
-    for line in textwrap.wrap(heading, 28):
-        d.text((140, y), line, font=font(96, True), fill=INK); y += 120
+    y = 420 if SHORT else 170
+    for line in textwrap.wrap(heading, 14 if SHORT else 28):
+        d.text((100 if SHORT else 140, y), line, font=font(120 if SHORT else 96, True), fill=INK); y += 140 if SHORT else 120
     y += 50
     for b in bullets:
-        for i, line in enumerate(textwrap.wrap(b, 44)):
-            d.text((140, y), ("•  " if i == 0 else "    ") + line, font=font(58), fill=INK); y += 78
+        for i, line in enumerate(textwrap.wrap(b, 22 if SHORT else 44)):
+            d.text((100 if SHORT else 140, y), ("•  " if i == 0 else "    ") + line, font=font(64 if SHORT else 58), fill=INK); y += 86 if SHORT else 78
         y += 26
+    d.text((100 if SHORT else 140, 90 if SHORT else 60), BRAND, font=font(44, True), fill=ACCENT)
     d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
     im.convert("RGBA" if overlay else "RGB").save(path)
 
@@ -91,8 +101,8 @@ def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else open("topics.txt").readline().strip()
     os.makedirs(OUT, exist_ok=True)
     s = script(topic); sc = s["scenes"]
-    sc.append({"heading": "Thanks for watching", "bullets": ["General education only.", "Not personal financial advice."],
-               "narration": "This video is general education and not personal financial advice. Thanks for watching."})
+    sc.append({"heading": "Follow " + BRAND, "bullets": ["General education only.", "Not personal financial advice."],
+               "narration": "General education only, not financial advice. Follow Fricomind for more."})
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
@@ -110,7 +120,7 @@ def main():
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/video.mp4")
     json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.\n\nStock footage from Pixabay (pixabay.com).",
-               "tags": s["tags"]}, open(f"{OUT}/meta.json", "w"), indent=2)
+               "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
 
 main()

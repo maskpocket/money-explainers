@@ -2,6 +2,9 @@ name: Make video
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: short or long
+        default: short
       topic:
         description: Topic (blank = first line of topics.txt)
         required: false
@@ -14,7 +17,7 @@ jobs:
         with: { python-version: '3.12', cache: pip }
       - uses: FedericoCarboni/setup-ffmpeg@v3
       - run: pip install -r requirements.txt
-      - run: python make_video.py "${{ inputs.topic }}"
+      - run: python make_video.py "${{ inputs.topic }}" "${{ inputs.mode }}"
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
