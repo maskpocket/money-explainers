@@ -15,7 +15,7 @@ Audience: beginners, English speakers worldwide. Tone: calm, clear, friendly, no
 Use plain words, one concrete example with numbers, and end with one action the viewer can take today.
 General education only, not personal financial advice.
 Return ONLY JSON: {{"title": str (under 70 chars), "description": str, "tags": [str],
-"scenes": [{{"heading": str (max 6 words), "bullets": [str, max 3, each max 9 words], "narration": str (40-70 words)}}]}}
+"scenes": [{{"keyword": str (1-2 plain English words for stock footage, concrete and visual, e.g. "coins", "calculator", "city"), "heading": str (max 6 words), "bullets": [str, max 3, each max 9 words], "narration": str (40-70 words)}}]}}
 Use 9 to 12 scenes."""
 
 def _groq(p):
@@ -53,8 +53,8 @@ def font(size, bold=False):
         if os.path.exists(p): return ImageFont.truetype(p, size)
     return ImageFont.load_default()
 
-def slide(path, heading, bullets, n, total):
-    im = Image.new("RGB", (W, H), BG); d = ImageDraw.Draw(im)
+def slide(path, heading, bullets, n, total, overlay=False):
+    im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
     y = 170
     for line in textwrap.wrap(heading, 28):
@@ -65,7 +65,22 @@ def slide(path, heading, bullets, n, total):
             d.text((140, y), ("•  " if i == 0 else "    ") + line, font=font(58), fill=INK); y += 78
         y += 26
     d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
-    im.save(path)
+    im.convert("RGBA" if overlay else "RGB").save(path)
+
+def stock(keyword, path):
+    """Download one Pixabay stock clip for the keyword. Returns the path, or None if nothing usable."""
+    try:
+        r = requests.get("https://pixabay.com/api/videos/", params={"key": os.environ["PIXABAY_API_KEY"], "q": keyword,
+            "safesearch": "true", "per_page": 5}, timeout=30)
+        r.raise_for_status()
+        for h in r.json().get("hits", []):
+            v = h["videos"].get("medium") or h["videos"].get("small")
+            if v and v.get("url"):
+                open(path, "wb").write(requests.get(v["url"], timeout=120).content)
+                return path
+    except Exception as e:
+        print("stock failed for", keyword, ":", e)
+    return None
 
 def run(*a): subprocess.run(a, check=True, capture_output=True)
 
@@ -81,14 +96,22 @@ def main():
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
-        slide(img, c["heading"], c["bullets"], i + 1, len(sc))
         asyncio.run(voice(c["narration"], aud))
-        run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-c:v", "libx264", "-tune", "stillimage",
-            "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
+        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4") if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
+        slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
+        if bg:
+            run("ffmpeg", "-y", "-stream_loop", "-1", "-i", bg, "-loop", "1", "-i", img, "-i", aud, "-filter_complex",
+                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[v];[v][1:v]overlay=0:0:shortest=1[o]",
+                "-map", "[o]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
+        else:
+            run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-c:v", "libx264", "-tune", "stillimage",
+                "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
         clips.append(clip)
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/video.mp4")
-    json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
+    json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.
+
+Stock footage from Pixabay (pixabay.com).",
                "tags": s["tags"]}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
 
