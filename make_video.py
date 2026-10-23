@@ -2,14 +2,19 @@
 import asyncio, json, os, subprocess, sys, textwrap
 import edge_tts, requests
 from captions import captions
+from speech import speakable
 from PIL import Image, ImageDraw, ImageFont
 
 MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ.get("MODE", "long")).lower()
 SHORT = MODE == "short"
 W, H = (1080, 1920) if SHORT else (1920, 1080)
 BRAND = "Fricomind"
-VOICE = os.environ.get("VOICE", "en-US-AriaNeural")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+VOICE = os.environ.get("VOICE", "en-US-AndrewNeural")
+GROQ_MODELS = [os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"), "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+HUMAN = (" Write exactly like a real person talking to a friend: contractions, short sentences, an occasional question, natural spoken rhythm."
+         " Never use the words delve, landscape, crucial, navigate, unlock, journey, game-changer, or phrases like in todays world or lets dive in."
+         " Write every number as digits (like $3,000 or 5%); the narrator will say them aloud. The keyword must be something a camera can film"
+         " that matches the scene (like piggy bank coins, person counting cash, laptop budget spreadsheet), never abstract or an animal unless the topic is that animal.")
 CF_MODEL = os.environ.get("CF_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
@@ -29,11 +34,17 @@ Return ONLY JSON: {{"title": str (under 70 chars), "description": str, "tags": [
 Use 9 to 12 scenes."""
 
 def _groq(p):
-    r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": "Bearer " + os.environ["GROQ_API_KEY"]},
-        json={"model": GROQ_MODEL, "messages": [{"role": "user", "content": p}]}, timeout=120)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    err = None
+    for m in GROQ_MODELS:
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": "Bearer " + os.environ["GROQ_API_KEY"]},
+                json={"model": m, "messages": [{"role": "user", "content": p}]}, timeout=120)
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            err = e; print("groq model", m, "failed:", e)
+    raise err
 
 def _cloudflare(p):
     acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
@@ -46,7 +57,7 @@ def _cloudflare(p):
     return res if isinstance(res, str) else json.dumps(res)
 
 def script(topic):
-    p = (PROMPT_SHORT if SHORT else PROMPT).format(topic=topic)
+    p = (PROMPT_SHORT if SHORT else PROMPT).format(topic=topic) + HUMAN
     for name, fn in (("groq", _groq), ("cloudflare", _cloudflare)):
         try:
             raw = fn(p); s = json.loads(raw[raw.index('{'):raw.rindex('}') + 1])
@@ -64,6 +75,7 @@ def font(size, bold=False):
     return ImageFont.load_default()
 
 def slide(path, heading, bullets, n, total, overlay=False):
+    pos = []
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
     y = 420 if SHORT else 170
@@ -71,22 +83,35 @@ def slide(path, heading, bullets, n, total, overlay=False):
         d.text((100 if SHORT else 140, y), line, font=font(92 if SHORT else 96, True), fill=INK); y += 112 if SHORT else 120
     y += 50
     for b in bullets:
-        for i, line in enumerate(textwrap.wrap(b, 22 if SHORT else 44)):
-            d.text((100 if SHORT else 140, y), ("•  " if i == 0 else "    ") + line, font=font(64 if SHORT else 58), fill=INK); y += 86 if SHORT else 78
+        bx = 100 if SHORT else 140; sz = 52 if SHORT else 46; pos.append((bx + sz // 2, y + (86 if SHORT else 78) // 2 - 4, sz))
+        d.ellipse([bx, pos[-1][1] - sz // 2, bx + sz, pos[-1][1] + sz // 2], outline=ACCENT, width=5)
+        for i, line in enumerate(textwrap.wrap(b, 20 if SHORT else 42)):
+            d.text((bx + sz + 28, y), line, font=font(64 if SHORT else 58), fill=INK); y += 86 if SHORT else 78
         y += 26
     d.text((100 if SHORT else 140, 90 if SHORT else 60), BRAND, font=font(44, True), fill=ACCENT)
     if not SHORT: d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
     im.convert("RGBA" if overlay else "RGB").save(path)
+    return pos
+
+def tick(path, x, y, sz):
+    """Transparent full-frame overlay holding one filled green circle with a white check."""
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(im); r = sz // 2
+    d.ellipse([x - r, y - r, x + r, y + r], fill=ACCENT)
+    d.line([(x - r * .45, y), (x - r * .1, y + r * .38), (x + r * .5, y - r * .38)], fill=(255, 255, 255), width=max(6, sz // 8), joint="curve")
+    im.save(path)
+
+USED_CLIPS = set()
 
 def stock(keyword, path):
     """Download one Pixabay stock clip for the keyword. Returns the path, or None if nothing usable."""
     try:
         r = requests.get("https://pixabay.com/api/videos/", params={"key": os.environ["PIXABAY_API_KEY"], "q": keyword,
-            "safesearch": "true", "per_page": 5}, timeout=30)
+            "safesearch": "true", "per_page": 12}, timeout=30)
         r.raise_for_status()
         for h in r.json().get("hits", []):
             v = h["videos"].get("medium") or h["videos"].get("small")
-            if v and v.get("url"):
+            if v and v.get("url") and v["url"] not in USED_CLIPS:
+                USED_CLIPS.add(v["url"])
                 open(path, "wb").write(requests.get(v["url"], timeout=120).content)
                 return path
     except Exception as e:
@@ -99,7 +124,7 @@ async def voice(text, path):
     """Save the narration and return [(start_s, end_s, word)] from the speech engine's word timings."""
     words = []
     with open(path, "wb") as f:
-        async for ch in edge_tts.Communicate(text, VOICE, rate="-4%", boundary="WordBoundary").stream():
+        async for ch in edge_tts.Communicate(speakable(text), VOICE, rate="-4%", boundary="WordBoundary").stream():
             if ch["type"] == "audio": f.write(ch["data"])
             elif ch["type"] == "WordBoundary":
                 st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
@@ -142,16 +167,23 @@ def main():
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
         words = asyncio.run(voice(c["narration"], aud)); ass = f"{OUT}/s{i}.ass"
         if SHORT: captions(words, ass, W, H)
-        vf = f",ass={ass}" if SHORT else ""
         bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4") if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
-        slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
-        if bg:
-            run("ffmpeg", "-y", "-stream_loop", "-1", "-i", bg, "-loop", "1", "-i", img, "-i", aud, "-filter_complex",
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[v];[v][1:v]overlay=0:0:shortest=1{vf}[o]",
-                "-map", "[o]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
-        else:
-            run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-c:v", "libx264", "-tune", "stillimage",
-                "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip) if not SHORT else run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-vf", f"ass={ass}", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
+        pos = slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
+        n = len(pos); ticks = []
+        for k, (x, y, sz) in enumerate(pos):
+            tp = f"{OUT}/s{i}_t{k}.png"; tick(tp, x, y, sz)
+            idx = min(len(words) - 1, int(len(words) * (k + 1) / (n + 1))) if words else 0
+            ticks.append((tp, words[idx][1] if words else 1.0))
+        ins = ["-stream_loop", "-1", "-i", bg] if bg else ["-f", "lavfi", "-i", f"color=c=0x0d1b2a:s={W}x{H}:r=24"]
+        ins += ["-loop", "1", "-i", img, "-i", aud]
+        for tp, _ in ticks: ins += ["-loop", "1", "-i", tp]
+        f = f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[v0];[v0][1:v]overlay=0:0:shortest=1[v1]"
+        last = "v1"
+        for k, (_, t0) in enumerate(ticks):
+            f += f";[{last}][{3 + k}:v]overlay=0:0:enable='gte(t,{t0:.2f})':shortest=1[v{k + 2}]"; last = f"v{k + 2}"
+        f += f";[{last}]{'ass=' + ass if SHORT else 'null'}[o]"
+        run("ffmpeg", "-y", *ins, "-filter_complex", f, "-map", "[o]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
         clips.append(clip)
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/raw.mp4")
