@@ -29,6 +29,10 @@ def main():
     if r.status_code not in (200, 201):
         sys.exit(f"Upload failed: {r.status_code} {r.text[:500]}")
     j = r.json()
+    if meta.get("mode") != "short" and os.path.exists("out/thumb.jpg"):
+        t = requests.post("https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=" + j["id"],
+                          headers={**h, "Content-Type": "image/jpeg"}, data=open("out/thumb.jpg", "rb").read(), timeout=120)
+        print("Thumbnail:", t.status_code)
     print("Uploaded:", j["id"], "privacy:", j["status"]["privacyStatus"])
 
 main()

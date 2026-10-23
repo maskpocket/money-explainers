@@ -118,6 +118,15 @@ def stock(keyword, path):
         print("stock failed for", keyword, ":", e)
     return None
 
+def thumb(title, topic):
+    """1280x720 thumbnail: big bold title on the brand background."""
+    im = Image.new("RGB", (1280, 720), BG); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 40, 720], fill=ACCENT); d.text((90, 70), BRAND.upper(), font=font(52, True), fill=ACCENT)
+    t = title.replace("#shorts", "").strip(); y = 190
+    for line in textwrap.wrap(t, 18)[:4]:
+        d.text((90, y), line, font=font(104, True), fill=INK); y += 125
+    im.save(f"{OUT}/thumb.jpg", quality=90)
+
 def run(*a): subprocess.run(a, check=True, capture_output=True)
 
 async def voice(text, path):
@@ -191,6 +200,7 @@ def main():
     run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-filter_complex",
         "sine=f=196[a];sine=f=247[b];sine=f=294[c];[a][b][c]amix=inputs=3:normalize=0,lowpass=f=700,tremolo=f=0.15:d=0.5,volume=0.5[m];"
         "[0:a][m]amix=inputs=2:weights=1 0.07:duration=first:normalize=0[o]", "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", f"{OUT}/video.mp4")
+    thumb(s["title"], topic)
     json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
