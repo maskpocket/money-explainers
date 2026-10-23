@@ -5,7 +5,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1920, 1080
 VOICE = os.environ.get("VOICE", "en-US-AriaNeural")
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+CF_MODEL = os.environ.get("CF_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
 
@@ -17,14 +18,35 @@ Return ONLY JSON: {{"title": str (under 70 chars), "description": str, "tags": [
 "scenes": [{{"heading": str (max 6 words), "bullets": [str, max 3, each max 9 words], "narration": str (40-70 words)}}]}}
 Use 9 to 12 scenes."""
 
-def script(topic):
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-        headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
-        json={"contents": [{"parts": [{"text": PROMPT.format(topic=topic)}]}],
-              "generationConfig": {"responseMimeType": "application/json"}}, timeout=120)
+def _groq(p):
+    r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": "Bearer " + os.environ["GROQ_API_KEY"]},
+        json={"model": GROQ_MODEL, "messages": [{"role": "user", "content": p}],
+              "response_format": {"type": "json_object"}}, timeout=120)
     r.raise_for_status()
-    return json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+    return r.json()["choices"][0]["message"]["content"]
+
+def _cloudflare(p):
+    acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    r = requests.post(f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/run/{CF_MODEL}",
+        headers={"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"]},
+        json={"messages": [{"role": "user", "content": p}], "max_tokens": 4096,
+              "response_format": {"type": "json_object"}}, timeout=180)
+    r.raise_for_status()
+    res = r.json()["result"]["response"]
+    return res if isinstance(res, str) else json.dumps(res)
+
+def script(topic):
+    p = PROMPT.format(topic=topic)
+    for name, fn in (("groq", _groq), ("cloudflare", _cloudflare)):
+        try:
+            s = json.loads(fn(p))
+            if len(s.get("scenes", [])) >= 6:
+                print("script by", name); return s
+            print(name, "returned too few scenes")
+        except Exception as e:
+            print(name, "failed:", e)
+    sys.exit("No AI provider produced a usable script")
 
 def font(size, bold=False):
     for p in (f"/usr/share/fonts/truetype/dejavu/DejaVuSans{'-Bold' if bold else ''}.ttf",
