@@ -1,6 +1,7 @@
 """Make one money-explainer video: topic -> script (Gemini) -> voice (edge-tts) -> slides (Pillow) -> mp4 (ffmpeg)."""
 import asyncio, json, os, subprocess, sys, textwrap
 import edge_tts, requests
+from captions import captions
 from PIL import Image, ImageDraw, ImageFont
 
 MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ.get("MODE", "long")).lower()
@@ -104,33 +105,6 @@ async def voice(text, path):
                 st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
     return words
 
-def _t(x): return f"{int(x // 3600)}:{int(x % 3600 // 60):02d}:{x % 60:05.2f}"
-
-def captions(words, path, per=3):
-    """ASS file: three words at a time, big and centred in the lower third, each group shown while it is spoken."""
-    head = ("[Script Info]
-ScriptType: v4.00+
-PlayResX: %d
-PlayResY: %d
-
-[V4+ Styles]
-"
-            "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-"
-            "Style: C,DejaVu Sans,84,&H00FFFFFF,&H00000000,&H80000000,1,6,2,2,80,80,420
-
-"
-            "[Events]
-Format: Layer,Start,End,Style,Text
-") % (W, H)
-    ev = []
-    for k in range(0, len(words), per):
-        g = words[k:k + per]
-        end = words[k + per][0] if k + per < len(words) else g[-1][1] + 0.3
-        ev.append(f"Dialogue: 0,{_t(g[0][0])},{_t(end)},C," + " ".join(w[2] for w in g).upper() + "
-")
-    open(path, "w", encoding="utf-8").write(head + "".join(ev))
-
 def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else open("topics.txt").readline().strip()
     os.makedirs(OUT, exist_ok=True)
@@ -141,7 +115,7 @@ def main():
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
         words = asyncio.run(voice(c["narration"], aud)); ass = f"{OUT}/s{i}.ass"
-        if SHORT: captions(words, ass)
+        if SHORT: captions(words, ass, W, H)
         vf = f",ass={ass}" if SHORT else ""
         bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4") if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
         slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
