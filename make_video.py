@@ -105,8 +105,12 @@ async def voice(text, path):
                 st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
     return words
 
+def pick_topic():
+    t = [l.strip() for l in open("topics.txt") if l.strip()]
+    return t[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(t)]
+
 def main():
-    topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else open("topics.txt").readline().strip()
+    topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
     os.makedirs(OUT, exist_ok=True)
     s = script(topic); sc = s["scenes"]
     sc.append({"heading": "Follow " + BRAND, "bullets": ["General education only.", "Not personal financial advice."],
