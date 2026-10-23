@@ -67,8 +67,8 @@ def slide(path, heading, bullets, n, total, overlay=False):
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
     y = 420 if SHORT else 170
-    for line in textwrap.wrap(heading, 14 if SHORT else 28):
-        d.text((100 if SHORT else 140, y), line, font=font(120 if SHORT else 96, True), fill=INK); y += 140 if SHORT else 120
+    for line in textwrap.wrap(heading, 13 if SHORT else 28):
+        d.text((100 if SHORT else 140, y), line, font=font(92 if SHORT else 96, True), fill=INK); y += 112 if SHORT else 120
     y += 50
     for b in bullets:
         for i, line in enumerate(textwrap.wrap(b, 22 if SHORT else 44)):
