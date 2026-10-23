@@ -9,7 +9,7 @@ MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ
 SHORT = MODE == "short"
 W, H = (1080, 1920) if SHORT else (1920, 1080)
 BRAND = "Fricomind"
-VOICE = os.environ.get("VOICE", "en-US-AndrewNeural")
+VOICE = os.environ.get("VOICE", "en-US-ChristopherNeural")
 GROQ_MODELS = [os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"), "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
 HUMAN = (" Write exactly like a real person talking to a friend: contractions, short sentences, an occasional question, natural spoken rhythm."
          " Never use the words delve, landscape, crucial, navigate, unlock, journey, game-changer, or phrases like in todays world or lets dive in."
@@ -133,7 +133,7 @@ async def voice(text, path):
     """Save the narration and return [(start_s, end_s, word)] from the speech engine's word timings."""
     words = []
     with open(path, "wb") as f:
-        async for ch in edge_tts.Communicate(speakable(text), VOICE, rate="-4%", boundary="WordBoundary").stream():
+        async for ch in edge_tts.Communicate(speakable(text), VOICE, rate="-4%", pitch="-6Hz", boundary="WordBoundary").stream():
             if ch["type"] == "audio": f.write(ch["data"])
             elif ch["type"] == "WordBoundary":
                 st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
@@ -169,8 +169,8 @@ def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
     os.makedirs(OUT, exist_ok=True)
     s = script(topic); sc = s["scenes"]
-    sc.append({"heading": "Follow " + BRAND, "bullets": ["General education only.", "Not personal financial advice."],
-               "narration": "General education only, not financial advice. Follow Fricomind for more."})
+    sc.append({"heading": BRAND, "bullets": ["General education only.", "Not personal financial advice."],
+               "narration": "General education only, not financial advice."})
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
