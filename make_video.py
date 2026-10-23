@@ -95,7 +95,41 @@ def stock(keyword, path):
 def run(*a): subprocess.run(a, check=True, capture_output=True)
 
 async def voice(text, path):
-    await edge_tts.Communicate(text, VOICE, rate="-4%").save(path)
+    """Save the narration and return [(start_s, end_s, word)] from the speech engine's word timings."""
+    words = []
+    with open(path, "wb") as f:
+        async for ch in edge_tts.Communicate(text, VOICE, rate="-4%", boundary="WordBoundary").stream():
+            if ch["type"] == "audio": f.write(ch["data"])
+            elif ch["type"] == "WordBoundary":
+                st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
+    return words
+
+def _t(x): return f"{int(x // 3600)}:{int(x % 3600 // 60):02d}:{x % 60:05.2f}"
+
+def captions(words, path, per=3):
+    """ASS file: three words at a time, big and centred in the lower third, each group shown while it is spoken."""
+    head = ("[Script Info]
+ScriptType: v4.00+
+PlayResX: %d
+PlayResY: %d
+
+[V4+ Styles]
+"
+            "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
+"
+            "Style: C,DejaVu Sans,84,&H00FFFFFF,&H00000000,&H80000000,1,6,2,2,80,80,420
+
+"
+            "[Events]
+Format: Layer,Start,End,Style,Text
+") % (W, H)
+    ev = []
+    for k in range(0, len(words), per):
+        g = words[k:k + per]
+        end = words[k + per][0] if k + per < len(words) else g[-1][1] + 0.3
+        ev.append(f"Dialogue: 0,{_t(g[0][0])},{_t(end)},C," + " ".join(w[2] for w in g).upper() + "
+")
+    open(path, "w", encoding="utf-8").write(head + "".join(ev))
 
 def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else open("topics.txt").readline().strip()
@@ -106,19 +140,25 @@ def main():
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
-        asyncio.run(voice(c["narration"], aud))
+        words = asyncio.run(voice(c["narration"], aud)); ass = f"{OUT}/s{i}.ass"
+        if SHORT: captions(words, ass)
+        vf = f",ass={ass}" if SHORT else ""
         bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4") if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
         slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
         if bg:
             run("ffmpeg", "-y", "-stream_loop", "-1", "-i", bg, "-loop", "1", "-i", img, "-i", aud, "-filter_complex",
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[v];[v][1:v]overlay=0:0:shortest=1[o]",
+                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[v];[v][1:v]overlay=0:0:shortest=1{vf}[o]",
                 "-map", "[o]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
         else:
             run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-c:v", "libx264", "-tune", "stillimage",
-                "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
+                "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip) if not SHORT else run("ffmpeg", "-y", "-loop", "1", "-i", img, "-i", aud, "-vf", f"ass={ass}", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
         clips.append(clip)
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
-    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/video.mp4")
+    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/raw.mp4")
+    # soft ambient pad under the voice (generated, so no licensing)
+    run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-filter_complex",
+        "sine=f=196[a];sine=f=247[b];sine=f=294[c];[a][b][c]amix=inputs=3:normalize=0,lowpass=f=700,tremolo=f=0.15:d=0.5,volume=0.5[m];"
+        "[0:a][m]amix=inputs=2:weights=1 0.07:duration=first:normalize=0[o]", "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", f"{OUT}/video.mp4")
     json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
