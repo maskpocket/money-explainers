@@ -109,9 +109,7 @@ def main():
         clips.append(clip)
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/video.mp4")
-    json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.
-
-Stock footage from Pixabay (pixabay.com).",
+    json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.\n\nStock footage from Pixabay (pixabay.com).",
                "tags": s["tags"]}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
 
