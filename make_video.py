@@ -75,7 +75,7 @@ def slide(path, heading, bullets, n, total, overlay=False):
             d.text((100 if SHORT else 140, y), ("•  " if i == 0 else "    ") + line, font=font(64 if SHORT else 58), fill=INK); y += 86 if SHORT else 78
         y += 26
     d.text((100 if SHORT else 140, 90 if SHORT else 60), BRAND, font=font(44, True), fill=ACCENT)
-    d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
+    if not SHORT: d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
     im.convert("RGBA" if overlay else "RGB").save(path)
 
 def stock(keyword, path):
@@ -105,9 +105,31 @@ async def voice(text, path):
                 st = ch["offset"] / 1e7; words.append((st, st + ch["duration"] / 1e7, ch["text"]))
     return words
 
+AREAS = ["budgeting", "saving", "debt", "credit scores", "banking", "investing basics", "stocks and ETFs", "inflation and prices",
+         "taxes", "retirement", "insurance", "scams and fraud", "money habits and psychology", "side income", "housing costs",
+         "student money", "family money", "big purchases", "emergency planning", "financial history and myths"]
+
+def _words(s): return set(w for w in "".join(c.lower() if c.isalnum() else " " for c in s).split() if len(w) > 3)
+
 def pick_topic():
-    t = [l.strip() for l in open("topics.txt") if l.strip()]
-    return t[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(t)]
+    """Ask the AI for fresh topics, skip anything close to one already used, record the pick in used_topics.txt."""
+    used = [l.strip() for l in open("used_topics.txt", encoding="utf-8") if l.strip()] if os.path.exists("used_topics.txt") else []
+    area = AREAS[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(AREAS)]
+    recent = "\n".join(used[-60:])
+    p = (f'Suggest 25 different YouTube video topics for beginners about personal finance, focused on: {area}. '
+         f'Each is a short plain title (4-10 words), specific and not generic. Do NOT repeat or closely resemble these:\n{recent}\n'
+         'Return ONLY a JSON array of strings.')
+    for fn in (_groq, _cloudflare):
+        try:
+            raw = fn(p); ideas = json.loads(raw[raw.index('['):raw.rindex(']') + 1])
+            for t in ideas:
+                w = _words(t)
+                if w and all(len(w & _words(u)) / len(w | _words(u)) < 0.6 for u in used):
+                    open("used_topics.txt", "a", encoding="utf-8").write(t.strip() + "\n"); return t.strip()
+        except Exception as e:
+            print("topic ideas failed:", e)
+    fall = [l.strip() for l in open("topics.txt") if l.strip()]
+    return fall[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(fall)]
 
 def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
