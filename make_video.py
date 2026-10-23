@@ -21,8 +21,7 @@ Use 9 to 12 scenes."""
 def _groq(p):
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": "Bearer " + os.environ["GROQ_API_KEY"]},
-        json={"model": GROQ_MODEL, "messages": [{"role": "user", "content": p}],
-              "response_format": {"type": "json_object"}}, timeout=120)
+        json={"model": GROQ_MODEL, "messages": [{"role": "user", "content": p}]}, timeout=120)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
@@ -40,7 +39,7 @@ def script(topic):
     p = PROMPT.format(topic=topic)
     for name, fn in (("groq", _groq), ("cloudflare", _cloudflare)):
         try:
-            s = json.loads(fn(p))
+            raw = fn(p); s = json.loads(raw[raw.index('{'):raw.rindex('}') + 1])
             if len(s.get("scenes", [])) >= 6:
                 print("script by", name); return s
             print(name, "returned too few scenes")
