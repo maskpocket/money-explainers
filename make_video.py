@@ -140,7 +140,7 @@ async def voice(text, path):
     return words
 
 AREAS = ["budgeting", "saving", "debt", "credit scores", "banking", "investing basics", "stocks and ETFs", "inflation and prices",
-         "taxes", "retirement", "insurance", "scams and fraud", "money habits and psychology", "side income", "housing costs",
+         "taxes", "retirement", "insurance", "scams and fraud", "money mindset", "wealth habits of rich people", "money mindset", "building wealth from nothing", "money habits and psychology", "side income", "housing costs",
          "student money", "family money", "big purchases", "emergency planning", "financial history and myths"]
 
 def _words(s): return set(w for w in "".join(c.lower() if c.isalnum() else " " for c in s).split() if len(w) > 3)
@@ -150,7 +150,7 @@ def pick_topic():
     used = [l.strip() for l in open("used_topics.txt", encoding="utf-8") if l.strip()] if os.path.exists("used_topics.txt") else []
     area = AREAS[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(AREAS)]
     recent = "\n".join(used[-60:])
-    p = (f'Suggest 25 different YouTube video topics for beginners about personal finance, focused on: {area}. '
+    p = (f'Suggest 25 different YouTube video topics for beginners about personal finance and a money-minded, wealth-building mindset, focused on: {area}. '
          f'Each is a short plain title (4-10 words), specific and not generic. Do NOT repeat or closely resemble these:\n{recent}\n'
          'Return ONLY a JSON array of strings.')
     for fn in (_groq, _cloudflare):
@@ -196,10 +196,11 @@ def main():
         clips.append(clip)
     open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/raw.mp4")
-    # soft ambient pad under the voice (generated, so no licensing)
-    run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-filter_complex",
-        "sine=f=196[a];sine=f=247[b];sine=f=294[c];[a][b][c]amix=inputs=3:normalize=0,lowpass=f=700,tremolo=f=0.15:d=0.5,volume=0.5[m];"
-        "[0:a][m]amix=inputs=2:weights=1 0.07:duration=first:normalize=0[o]", "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", f"{OUT}/video.mp4")
+    # background music bed (generated, so no licensing)
+    import music; music.make(f"{OUT}/music.wav")
+    run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-stream_loop", "-1", "-i", f"{OUT}/music.wav", "-filter_complex",
+        "[1:a]volume=0.4[m];[0:a][m]amix=inputs=2:weights=1 0.5:duration=first:normalize=0,alimiter=limit=0.95[o]",
+        "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", f"{OUT}/video.mp4")
     thumb(s["title"], topic)
     json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
