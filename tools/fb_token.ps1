@@ -9,7 +9,12 @@ $short = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServ
 $g = "https://graph.facebook.com/v21.0"
 $ll = (Invoke-RestMethod "$g/oauth/access_token?grant_type=fb_exchange_token&client_id=$appId&client_secret=$secret&fb_exchange_token=$short").access_token
 $pages = (Invoke-RestMethod "$g/me/accounts?access_token=$ll").data
-if (-not $pages) { Write-Host "No Pages found. Did you tick your Page in the permission dialog?"; exit 1 }
+if (-not $pages) {
+  Write-Host "No Pages found. Permissions on this token:"
+  (Invoke-RestMethod "$g/me/permissions?access_token=$ll").data | ForEach-Object { Write-Host ("  " + $_.permission + " = " + $_.status) }
+  Write-Host ("Token user: " + (Invoke-RestMethod "$g/me?fields=name&access_token=$ll").name)
+  exit 1
+}
 $pages | ForEach-Object { Write-Host ("Page: " + $_.name + "  id " + $_.id) }
 $p = $pages | Where-Object { $_.name -like "*Fricomind*" } | Select-Object -First 1
 if (-not $p) { $p = $pages[0] }
