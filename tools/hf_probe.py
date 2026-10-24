@@ -8,7 +8,7 @@ api = HfApi(token=tok)
 seen = []
 for q in ["sadtalker", "musetalk", "latentsync", "hallo", "talking head", "ltx-video", "wan2.1 image to video", "liveportrait"]:
     try:
-        for s in api.list_spaces(search=q, sort="likes", direction=-1, limit=4):
+        for s in api.list_spaces(search=q, sort="likes", limit=4):
             if s.id not in seen and s.sdk == "gradio":
                 seen.append(s.id); print(q, "->", s.id, s.likes, s.runtime.stage if s.runtime else "")
     except Exception as e:
