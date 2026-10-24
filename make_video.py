@@ -198,9 +198,10 @@ def main():
     run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/raw.mp4")
     # background music bed (generated, so no licensing)
     import music; music.make(f"{OUT}/music.wav")
+    dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f"{OUT}/raw.mp4"]).decode().strip()
     run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-stream_loop", "-1", "-i", f"{OUT}/music.wav", "-filter_complex",
         "[1:a]volume=0.4[m];[0:a][m]amix=inputs=2:weights=1 0.5:duration=first:normalize=0,alimiter=limit=0.95[o]",
-        "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", f"{OUT}/video.mp4")
+        "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", dur, f"{OUT}/video.mp4")
     thumb(s["title"], topic)
     json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
