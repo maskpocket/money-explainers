@@ -51,7 +51,7 @@ jobs:
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-          FB_PUBLISHED: "false"
+          FB_PUBLISHED: "true"
       - run: |
           git config user.name maskpocket
           git config user.email maskpocket@users.noreply.github.com
