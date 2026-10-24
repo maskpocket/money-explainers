@@ -43,7 +43,7 @@ def _money(m):
     return int_words(v) + " " + unit + ("" if v == 1 else "s")
 
 def speakable(t):
-    t = re.sub(r"([$£€₵])\s?(\d[\d,]*(?:\.\d+)?)\s?(bn|[kKmMbB])?\b", lambda m: _money(m), t)
+    t = re.sub(r"([$£€₵])\s?(\d[\d,]*(?:\.\d+)?)(?:\s?(bn|[kKmMbB])\b)?", lambda m: _money(m), t)
     t = re.sub(r"(\d[\d,]*(?:\.\d+)?)\s?%", lambda m: _num(m.group(1)) + " percent", t)
     t = re.sub(r"\b(\d{1,2})/(\d{1,2})/(\d{1,2})\b", lambda m: " ".join(int_words(int(x)) for x in m.groups()), t)
     t = re.sub(r"\b(1[5-9]\d\d|20\d\d)\b", lambda m: year_words(int(m.group(1))), t)

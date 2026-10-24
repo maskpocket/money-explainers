@@ -23,7 +23,7 @@ PROMPT_SHORT = """Write a 40-50 second YouTube Short for people aged 16-30 about
 Sound like a hyped but honest older sibling. Scene 1 is a scroll-stopping hook under 12 words: a surprising number, a mistake they are making right now, or a bold question. Then a tiny real story with a first name, an age and exact numbers (for example Kwame, 19, selling phone cases), then the simple move that worked, then end with one challenge to do today and a reason to follow for more.
 Punchy short sentences, plain words, no jargon, no get-rich promises. General education only.
 Return ONLY JSON: {{"title": str (under 60 chars, curiosity or a number, add #shorts), "description": str, "tags": [str],
-"scenes": [{{"keyword": str (2 plain words a camera can film, like person counting cash), "keyword2": str (a different filmable backup, 2 words), "heading": str (max 4 words, punchy, like Stop doing this), "narration": str (12-22 words)}}]}}
+"scenes": [{{"keyword": str (2 real-world words a camera can film, like hands holding phone or counting money; never an app, website or brand name), "keyword2": str (a different filmable backup, 2 words), "heading": str (max 4 words, punchy, like Stop doing this), "narration": str (12-22 words)}}]}}
 Use 6 to 7 scenes."""
 
 PROMPT = """Write a 4-5 minute YouTube explainer for adults about: "{topic}".
@@ -116,20 +116,27 @@ def tick(path, x, y, sz):
 
 USED_CLIPS = set()
 
+BAD_TAGS = ("green screen", "alpha", "animation", "3d", "abstract", "server", "cloud", "icon", "subscribe", "logo", "button", "loop", "template", "intro")
+GENERIC = ["people phone", "counting money", "city street", "person laptop"]
+
 def stock(keyword, path, backup=None):
-    """Download one Pixabay stock clip for the keyword. Returns the path, or None if nothing usable."""
-    got = _stock(keyword, path)
-    return got or (_stock(backup, path) if backup else None)
+    """Download one relevant Pixabay clip: the tags must mention the keyword, and animations or green screens are skipped."""
+    for kw in (keyword, backup, random.choice(GENERIC)):
+        if kw and _stock(kw, path): return path
+    return None
 
 def _stock(keyword, path):
+    words = [w.rstrip("s") for w in keyword.lower().split() if len(w) > 2]
     try:
         r = requests.get("https://pixabay.com/api/videos/", params={"key": os.environ["PIXABAY_API_KEY"], "q": keyword,
-            "safesearch": "true", "per_page": 20, "min_width": 1080}, timeout=30)
-        r.raise_for_status()
-        hits = r.json().get("hits", []); random.shuffle(hits)
-        for h in hits:
+            "safesearch": "true", "per_page": 30, "min_width": 1080}, timeout=30)
+        r.raise_for_status(); hits = r.json().get("hits", []); random.shuffle(hits)
+        def score(h):
+            tg = h.get("tags", "").lower()
+            return -1 if any(b in tg for b in BAD_TAGS) else sum(w in tg for w in words)
+        for h in sorted(hits, key=score, reverse=True):
             v = h["videos"].get("medium") or h["videos"].get("small")
-            if v and v.get("url") and v["url"] not in USED_CLIPS:
+            if score(h) >= 1 and v and v.get("url") and v["url"] not in USED_CLIPS:
                 USED_CLIPS.add(v["url"])
                 open(path, "wb").write(requests.get(v["url"], timeout=120).content)
                 return path
