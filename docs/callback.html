@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connecting TikTok</title>
+<style>body{font-family:system-ui,sans-serif;max-width:680px;margin:48px auto;padding:0 20px;color:#0d1b2a}</style></head><body>
+<p id="m">Connecting your TikTok account...</p>
+<script>
+const W="https://fricomind-tiktok.antwordtech.workers.dev";
+const q=new URLSearchParams(location.search),m=document.getElementById("m");
+(async()=>{
+ if(q.get("error")){m.textContent="TikTok sign-in was cancelled.";return}
+ if(q.get("state")!==sessionStorage.getItem("tt_state")){m.textContent="Sign-in check failed. Please start again.";return}
+ const r=await fetch(W+"/api/callback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code:q.get("code")})});
+ const d=await r.json();
+ if(!d.session){m.textContent="Could not connect: "+(d.error||"unknown error");return}
+ sessionStorage.setItem("tt_session",d.session);sessionStorage.setItem("tt_user",JSON.stringify(d.user));
+ location.replace("tiktok.html");
+})();
+</script></body></html>

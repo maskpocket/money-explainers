@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fricomind on TikTok</title>
+<style>body{font-family:system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;line-height:1.5;color:#0d1b2a}h1{color:#1e9e5a}
+button{background:#1e9e5a;color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}button:disabled{opacity:.5}
+label{display:block;margin:12px 0 4px;font-weight:600}input[type=text],select,textarea{width:100%;padding:8px;font-size:15px;box-sizing:border-box}
+.card{border:1px solid #d5dde5;border-radius:10px;padding:16px;margin:16px 0}.who{display:flex;align-items:center;gap:12px}.who img{width:48px;height:48px;border-radius:50%}
+.row label{display:inline;font-weight:400;margin-right:16px}small{color:#51606f}#log{white-space:pre-wrap}</style></head><body>
+<h1>Fricomind on TikTok</h1>
+<p>Fricomind publishes its own short, plain-language money videos. This page connects the Fricomind TikTok account and publishes a video to it. Videos are labelled as AI-generated content.</p>
+<div id="out" class="card"><p>Not connected.</p><button id="connect">Connect TikTok</button></div>
+<div id="post" class="card" hidden>
+ <div class="who"><img id="av" alt=""><div>Posting to <b id="nick"></b></div></div>
+ <label>Video file (mp4)</label><input type="file" id="file" accept="video/mp4">
+ <label>Caption</label><textarea id="title" rows="3" maxlength="2200"></textarea>
+ <label>Who can see this video</label><select id="priv"></select>
+ <div class="row"><p><b>Allow others to:</b></p><label><input type="checkbox" id="c" checked> Comment</label><label><input type="checkbox" id="d" checked> Duet</label><label><input type="checkbox" id="s" checked> Stitch</label></div>
+ <p><small>This video is labelled as AI-generated content. By posting you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en">Music Usage Confirmation</a>.</small></p>
+ <button id="go" disabled>Post to TikTok</button><p id="log"></p>
+</div>
+<script>
+const W="https://fricomind-tiktok.antwordtech.workers.dev",$=i=>document.getElementById(i),ss=sessionStorage;
+$("connect").onclick=async()=>{
+ const c=await (await fetch(W+"/api/config")).json(),st=crypto.randomUUID();ss.setItem("tt_state",st);
+ location.href="https://www.tiktok.com/v2/auth/authorize/?"+new URLSearchParams({client_key:c.client_key,scope:c.scope,response_type:"code",redirect_uri:c.redirect,state:st});
+};
+(async()=>{
+ const s=ss.getItem("tt_session");if(!s)return;
+ const H={authorization:"Bearer "+s},u=JSON.parse(ss.getItem("tt_user")||"{}");
+ const cr=await fetch(W+"/api/creator",{headers:H});if(!cr.ok){ss.removeItem("tt_session");return}
+ const c=await cr.json();
+ $("out").hidden=false;$("out").innerHTML="<p>Connected to TikTok.</p>";$("post").hidden=false;
+ $("nick").textContent=c.creator_nickname||u.display_name||"";$("av").src=c.creator_avatar_url||u.avatar_url||"";
+ const names={PUBLIC_TO_EVERYONE:"Everyone",MUTUAL_FOLLOW_FRIENDS:"Friends",FOLLOWER_OF_CREATOR:"Followers",SELF_ONLY:"Only me"};
+ $("priv").innerHTML='<option value="">Select who can view</option>'+(c.privacy_level_options||[]).map(o=>`<option value="${o}">${names[o]||o}</option>`).join("");
+ const chk=()=>$("go").disabled=!($("file").files[0]&&$("priv").value);$("file").onchange=chk;$("priv").onchange=chk;
+ $("go").onclick=async()=>{
+  $("go").disabled=true;$("log").textContent="Uploading...";
+  const f=$("file").files[0],fl=[!$("c").checked&&"nocomment",!$("d").checked&&"noduet",!$("s").checked&&"nostitch"].filter(Boolean).join(",");
+  const r=await fetch(W+"/api/publish",{method:"POST",headers:{...H,"x-title":encodeURIComponent($("title").value),"x-privacy":$("priv").value,"x-flags":fl},body:f});
+  const d=await r.json();if(!d.ok){$("log").textContent="Failed: "+(d.error||"")+" "+JSON.stringify(d.detail||"");return}
+  for(let i=0;i<30;i++){
+   const p=await (await fetch(W+"/api/status",{method:"POST",headers:{...H,"content-type":"application/json"},body:JSON.stringify({publish_id:d.publish_id})})).json();
+   $("log").textContent="Status: "+(p.status||"processing");
+   if(p.status==="PUBLISH_COMPLETE"||p.status==="FAILED"){if(p.status==="FAILED")$("log").textContent+=" - "+(p.fail_reason||"");break}
+   await new Promise(r=>setTimeout(r,3000));
+  }
+ };
+})();
+</script></body></html>

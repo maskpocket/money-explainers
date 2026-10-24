@@ -1,0 +1,6 @@
+{
+  "name": "fricomind-tiktok",
+  "main": "src/index.js",
+  "compatibility_date": "2025-01-01",
+  "kv_namespaces": [{ "binding": "TOKENS", "id": "0c8363f0f637420fab7fe7efb593f561" }]
+}
