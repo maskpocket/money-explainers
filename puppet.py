@@ -24,7 +24,7 @@ def loudness(audio):
 
 
 def face(base, open_, blink, bounce):
-    im = base.copy()
+    im = base.copy().convert("RGBA")
     d = ImageDraw.Draw(im, "RGBA")
     if open_ > 0.08:
         w, h = 52 + 38 * open_, 8 + 52 * open_
@@ -46,8 +46,8 @@ def face(base, open_, blink, bounce):
 
 
 def render(audio, out, bg, W=1080, H=1920, face_w=1080):
-    """bg: PIL image (W x H) the host stands on. Writes an mp4 with the audio."""
-    base = Image.open("assets/host.jpg").convert("RGB")
+    """bg: PIL image (W x H), or a function (frame, total) -> image, that the host stands on. Writes an mp4 with the audio."""
+    base = Image.open("assets/host_cut.png").convert("RGBA")
     lev = loudness(audio)
     p = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
                           "-i", audio, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "20",
@@ -57,6 +57,8 @@ def render(audio, out, bg, W=1080, H=1920, face_w=1080):
         if blink_left: blink_left -= 1
         elif i >= nxt: blink_left, nxt = 4, i + random.randint(70, 140)
         f = face(base, v, blink_left > 0, v).resize((face_w, face_w), Image.LANCZOS)
-        fr = bg.copy(); fr.paste(f, ((W - face_w) // 2, H - face_w - 60))
+        fr = (bg(i, len(lev)) if callable(bg) else bg).copy().convert("RGBA")
+        fr.alpha_composite(f, ((W - face_w) // 2, H - face_w - 60))
+        fr = fr.convert("RGB")
         p.stdin.write(fr.tobytes())
     p.stdin.close(); p.wait()
