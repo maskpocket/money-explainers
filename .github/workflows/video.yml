@@ -45,6 +45,13 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      - if: ${{ inputs.upload != 'false' }}
+        run: python upload_facebook.py
+        continue-on-error: true
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          FB_PUBLISHED: "false"
       - run: |
           git config user.name maskpocket
           git config user.email maskpocket@users.noreply.github.com
