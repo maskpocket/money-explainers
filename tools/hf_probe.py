@@ -14,10 +14,10 @@ for q in ["sadtalker", "musetalk", "latentsync", "hallo", "talking head", "ltx-v
                 seen.append(s.id); print(q, "->", s.id, s.likes, s.runtime.stage if s.runtime else "")
     except Exception as e:
         print("search fail", q, e)
-for sid in seen[:14]:
+for sid in ["vinthony/SadTalker","fffiloni/LatentSync","multimodalart/MoDA-fast-talking-head","Skywork/skyreels-a1-talking-head","fffiloni/tts-hallo-talking-portrait","KlingTeam/LivePortrait","Lightricks/ltx-video-distilled","MarkoVidrih/image-to-talking-head"]:
     print("\n=====", sid)
     try:
-        c = Client(sid, hf_token=tok, verbose=False)
+        c = Client(sid, token=tok, verbose=False)
         c.view_api(print_info=True, return_format=None)
     except Exception as e:
         print("unusable:", str(e)[:200])
