@@ -7,7 +7,7 @@ G = "https://graph.facebook.com/v21.0"
 def main():
     meta = json.load(open("out/meta.json"))
     token, ig = os.environ["FB_PAGE_TOKEN"], os.environ["IG_USER_ID"]
-    path = "out/video.mp4"
+    path = "out/video_h.mp4" if os.path.exists("out/video_h.mp4") else "out/video.mp4"
     caption = (meta["title"] + "\n\n" + meta["description"])[:2000]
     r = requests.post(f"{G}/{ig}/media", data={"media_type": "REELS", "upload_type": "resumable",
                       "caption": caption, "access_token": token}, timeout=60)

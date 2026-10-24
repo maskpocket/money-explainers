@@ -7,7 +7,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ.get("MODE", "long")).lower()
 SHORT = MODE == "short"
-W, H = 1920, 1080  # every platform gets the horizontal frame, short or long
+VERT = SHORT  # a short is vertical for YouTube; every other platform gets the horizontal copy
+W, H = (1080, 1920) if VERT else (1920, 1080)
 BRAND = "Fricomind"
 VOICE = os.environ.get("VOICE", "en-US-ChristopherNeural")
 GROQ_MODELS = [os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"), "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
@@ -87,21 +88,22 @@ def slide_short(path, heading):
     return []
 
 def slide(path, heading, bullets, n, total, overlay=False):
+    if VERT: return slide_short(path, heading)
     pos = []
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
-    y = 170
-    for line in textwrap.wrap(heading, 28):
-        d.text((140, y), line, font=font(96, True), fill=INK); y += 120
+    y = 420 if VERT else 170
+    for line in textwrap.wrap(heading, 13 if VERT else 28):
+        d.text((100 if VERT else 140, y), line, font=font(92 if VERT else 96, True), fill=INK); y += 112 if VERT else 120
     y += 50
     for b in bullets:
-        bx = 140; sz = 46; pos.append((bx + sz // 2, y + 78 // 2 - 4, sz))
+        bx = 100 if VERT else 140; sz = 52 if VERT else 46; pos.append((bx + sz // 2, y + (86 if VERT else 78) // 2 - 4, sz))
         d.ellipse([bx, pos[-1][1] - sz // 2, bx + sz, pos[-1][1] + sz // 2], outline=ACCENT, width=5)
-        for i, line in enumerate(textwrap.wrap(b, 42)):
-            d.text((bx + sz + 28, y), line, font=font(58), fill=INK); y += 78
+        for i, line in enumerate(textwrap.wrap(b, 20 if VERT else 42)):
+            d.text((bx + sz + 28, y), line, font=font(64 if VERT else 58), fill=INK); y += 86 if VERT else 78
         y += 26
-    d.text((140, 60), BRAND, font=font(44, True), fill=ACCENT)
-    d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
+    d.text((100 if VERT else 140, 90 if VERT else 60), BRAND, font=font(44, True), fill=ACCENT)
+    if not VERT: d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
     im.convert("RGBA" if overlay else "RGB").save(path)
     return pos
 
@@ -200,21 +202,19 @@ def pick_topic():
     fall = [l.strip() for l in open("topics.txt") if l.strip()]
     return fall[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(fall)]
 
-def main():
-    topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
-    os.makedirs(OUT, exist_ok=True)
-    s = script(topic); sc = s["scenes"]
-    json.dump(s, open(f"{OUT}/script.json", "w"), indent=1)
-    clips = []
+def render(sc, voiced, vert, name):
+    """Render every scene in one orientation and mix in the music; vert=True is 1080x1920, else 1920x1080."""
+    global VERT, W, H
+    VERT = vert; W, H = (1080, 1920) if vert else (1920, 1080)
+    tag = "v" if vert else "h"; clips = []
     for i, c in enumerate(sc):
-        img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
-        words = asyncio.run(voice(c["narration"], aud)); ass = f"{OUT}/s{i}.ass"
+        words, bg = voiced[i]
+        img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}_{tag}.mp4"; ass = f"{OUT}/s{i}_{tag}.ass"
         if SHORT: captions(align(speakable(c["narration"]).split(), words), ass, W, H)
-        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4", c.get("keyword2")) if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
         pos = slide(img, c["heading"], c.get("bullets", []), i + 1, len(sc), overlay=bool(bg))
         n = len(pos); ticks = []
         for k, (x, y, sz) in enumerate(pos):
-            tp = f"{OUT}/s{i}_t{k}.png"; tick(tp, x, y, sz)
+            tp = f"{OUT}/s{i}_{tag}_t{k}.png"; tick(tp, x, y, sz)
             idx = min(len(words) - 1, int(len(words) * (k + 1) / (n + 1))) if words else 0
             ticks.append((tp, words[idx][1] if words else 1.0))
         ins = ["-stream_loop", "-1", "-i", bg] if bg else ["-f", "lavfi", "-i", f"color=c=0x0d1b2a:s={W}x{H}:r=24"]
@@ -228,14 +228,30 @@ def main():
         run("ffmpeg", "-y", *ins, "-filter_complex", f, "-map", "[o]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p",
             "-r", "24", "-c:a", "aac", "-b:a", "160k", "-shortest", clip)
         clips.append(clip)
-    open(f"{OUT}/list.txt", "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
-    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"{OUT}/list.txt", "-c", "copy", f"{OUT}/raw.mp4")
-    # background music bed (generated, so no licensing)
-    import music; music.make(f"{OUT}/music.wav")
-    dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f"{OUT}/raw.mp4"]).decode().strip()
-    run("ffmpeg", "-y", "-i", f"{OUT}/raw.mp4", "-stream_loop", "-1", "-i", f"{OUT}/music.wav", "-filter_complex",
+    lst, raw = f"{OUT}/list_{tag}.txt", f"{OUT}/raw_{tag}.mp4"
+    open(lst, "w").write("".join(f"file '{os.path.basename(c)}'\n" for c in clips))
+    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", raw)
+    dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", raw]).decode().strip()
+    run("ffmpeg", "-y", "-i", raw, "-stream_loop", "-1", "-i", f"{OUT}/music.wav", "-filter_complex",
         "[1:a]volume=0.4[m];[0:a][m]amix=inputs=2:weights=1 0.5:duration=first:normalize=0,alimiter=limit=0.95[o]",
-        "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", dur, f"{OUT}/video.mp4")
+        "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", dur, f"{OUT}/{name}")
+
+def main():
+    topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
+    os.makedirs(OUT, exist_ok=True)
+    s = script(topic); sc = s["scenes"]
+    json.dump(s, open(f"{OUT}/script.json", "w"), indent=1)
+    voiced = []
+    for i, c in enumerate(sc):
+        words = asyncio.run(voice(c["narration"], f"{OUT}/s{i}.mp3"))
+        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4", c.get("keyword2")) if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
+        voiced.append((words, bg))
+    import music; music.make(f"{OUT}/music.wav")  # background music bed (generated, so no licensing)
+    if SHORT:
+        render(sc, voiced, True, "video.mp4")      # YouTube Shorts needs vertical
+        render(sc, voiced, False, "video_h.mp4")   # Facebook, Instagram, TikTok: horizontal like the long videos
+    else:
+        render(sc, voiced, False, "video.mp4")
     thumb(s["title"], topic)
     json.dump({"title": s["title"], "description": s["description"],
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)

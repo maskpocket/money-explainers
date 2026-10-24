@@ -64,6 +64,6 @@ jobs:
           git add used_topics.txt
           git diff --cached --quiet || (git commit -qm "Record topic" && git pull -q --rebase && git push -q)
       - uses: actions/upload-artifact@v4
-        with: { name: video, path: out/video.mp4 }
+        with: { name: video, path: out/video*.mp4 }
       - uses: actions/upload-artifact@v4
         with: { name: meta, path: out/meta.json }
