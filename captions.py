@@ -19,7 +19,7 @@ def captions(words, path, w, h, per=3):
         f"PlayResX: {w}\nPlayResY: {h}\n\n"
         "[V4+ Styles]\n"
         "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Outline,Shadow,Alignment,MarginL,MarginR,MarginV\n"
-        "Style: C,DejaVu Sans,96,&H00FFFFFF,&H00000000,&H80000000,1,8,2,2,70,70,430\n\n"
+        f"Style: C,DejaVu Sans,{80 if w > h else 96},&H00FFFFFF,&H00000000,&H80000000,1,8,2,2,70,70,430\n\n"
         "[Events]\nFormat: Layer,Start,End,Style,Text\n"
     )
     ev = []

@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 MODE = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].strip() else os.environ.get("MODE", "long")).lower()
 SHORT = MODE == "short"
-W, H = (1080, 1920) if SHORT else (1920, 1080)
+W, H = 1920, 1080  # every platform gets the horizontal frame, short or long
 BRAND = "Fricomind"
 VOICE = os.environ.get("VOICE", "en-US-ChristopherNeural")
 GROQ_MODELS = [os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"), "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
@@ -87,22 +87,21 @@ def slide_short(path, heading):
     return []
 
 def slide(path, heading, bullets, n, total, overlay=False):
-    if SHORT: return slide_short(path, heading)
     pos = []
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
-    y = 420 if SHORT else 170
-    for line in textwrap.wrap(heading, 13 if SHORT else 28):
-        d.text((100 if SHORT else 140, y), line, font=font(92 if SHORT else 96, True), fill=INK); y += 112 if SHORT else 120
+    y = 170
+    for line in textwrap.wrap(heading, 28):
+        d.text((140, y), line, font=font(96, True), fill=INK); y += 120
     y += 50
     for b in bullets:
-        bx = 100 if SHORT else 140; sz = 52 if SHORT else 46; pos.append((bx + sz // 2, y + (86 if SHORT else 78) // 2 - 4, sz))
+        bx = 140; sz = 46; pos.append((bx + sz // 2, y + 78 // 2 - 4, sz))
         d.ellipse([bx, pos[-1][1] - sz // 2, bx + sz, pos[-1][1] + sz // 2], outline=ACCENT, width=5)
-        for i, line in enumerate(textwrap.wrap(b, 20 if SHORT else 42)):
-            d.text((bx + sz + 28, y), line, font=font(64 if SHORT else 58), fill=INK); y += 86 if SHORT else 78
+        for i, line in enumerate(textwrap.wrap(b, 42)):
+            d.text((bx + sz + 28, y), line, font=font(58), fill=INK); y += 78
         y += 26
-    d.text((100 if SHORT else 140, 90 if SHORT else 60), BRAND, font=font(44, True), fill=ACCENT)
-    if not SHORT: d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
+    d.text((140, 60), BRAND, font=font(44, True), fill=ACCENT)
+    d.rectangle([140, H - 90, 140 + int((W - 280) * n / total), H - 80], fill=ACCENT)
     im.convert("RGBA" if overlay else "RGB").save(path)
     return pos
 
