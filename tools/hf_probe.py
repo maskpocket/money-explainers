@@ -3,7 +3,8 @@ import os, asyncio
 from huggingface_hub import HfApi
 from gradio_client import Client
 
-tok = os.environ.get("HF_TOKEN")
+tok = os.environ.get("HF_TOKEN") or None
+print("token set:", bool(tok))
 api = HfApi(token=tok)
 seen = []
 for q in ["sadtalker", "musetalk", "latentsync", "hallo", "talking head", "ltx-video", "wan2.1 image to video", "liveportrait"]:
