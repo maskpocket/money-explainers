@@ -1,7 +1,7 @@
 """Make one money-explainer video: topic -> script (Gemini) -> voice (edge-tts) -> slides (Pillow) -> mp4 (ffmpeg)."""
-import asyncio, json, os, subprocess, sys, textwrap
+import asyncio, json, os, random, subprocess, sys, textwrap
 import edge_tts, requests
-from captions import captions
+from captions import captions, align
 from speech import speakable
 from PIL import Image, ImageDraw, ImageFont
 
@@ -19,11 +19,12 @@ CF_MODEL = os.environ.get("CF_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
 
-PROMPT_SHORT = """Write a 40-50 second YouTube Short for adults about: "{topic}".
-Open with a one-line hook that makes people stay. Tone: calm, clear, friendly, no hype, no get-rich promises. One concrete example with numbers, end with one action to take today. General education only.
-Return ONLY JSON: {{"title": str (under 60 chars, add #shorts), "description": str, "tags": [str],
-"scenes": [{{"keyword": str (1-2 plain words for stock footage), "heading": str (max 5 words), "bullets": [str, max 2, each max 6 words], "narration": str (14-24 words)}}]}}
-Use 5 to 6 scenes."""
+PROMPT_SHORT = """Write a 40-50 second YouTube Short for people aged 16-30 about: "{topic}".
+Sound like a hyped but honest older sibling. Scene 1 is a scroll-stopping hook under 12 words: a surprising number, a mistake they are making right now, or a bold question. Then a tiny real story with a first name, an age and exact numbers (for example Kwame, 19, selling phone cases), then the simple move that worked, then end with one challenge to do today and a reason to follow for more.
+Punchy short sentences, plain words, no jargon, no get-rich promises. General education only.
+Return ONLY JSON: {{"title": str (under 60 chars, curiosity or a number, add #shorts), "description": str, "tags": [str],
+"scenes": [{{"keyword": str (2 plain words a camera can film, like person counting cash), "keyword2": str (a different filmable backup, 2 words), "heading": str (max 4 words, punchy, like Stop doing this), "narration": str (12-22 words)}}]}}
+Use 6 to 7 scenes."""
 
 PROMPT = """Write a 4-5 minute YouTube explainer for adults about: "{topic}".
 Audience: beginners, English speakers worldwide. Tone: calm, clear, friendly, no hype, no get-rich promises.
@@ -74,7 +75,20 @@ def font(size, bold=False):
         if os.path.exists(p): return ImageFont.truetype(p, size)
     return ImageFont.load_default()
 
+def slide_short(path, heading):
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    for k in range(60):
+        d.rectangle([0, int(H * 0.45) + k * int(H * 0.55 / 60), W, int(H * 0.45) + (k + 1) * int(H * 0.55 / 60)], fill=(5, 12, 20, int(k * 3.4)))
+    for k in range(30): d.rectangle([0, k * 6, W, k * 6 + 6], fill=(5, 12, 20, 170 - k * 5))
+    d.text((70, 90), BRAND, font=font(46, True), fill=ACCENT)
+    y = 190
+    for line in textwrap.wrap(heading.upper(), 16)[:3]:
+        d.text((70, y), line, font=font(88, True), fill=(255, 214, 10), stroke_width=6, stroke_fill=(0, 0, 0)); y += 104
+    im.save(path)
+    return []
+
 def slide(path, heading, bullets, n, total, overlay=False):
+    if SHORT: return slide_short(path, heading)
     pos = []
     im = Image.new("RGBA", (W, H), BG + (165,) if overlay else BG + (255,)); d = ImageDraw.Draw(im)
     d.rectangle([0, 0, 24, H], fill=ACCENT)
@@ -102,13 +116,18 @@ def tick(path, x, y, sz):
 
 USED_CLIPS = set()
 
-def stock(keyword, path):
+def stock(keyword, path, backup=None):
     """Download one Pixabay stock clip for the keyword. Returns the path, or None if nothing usable."""
+    got = _stock(keyword, path)
+    return got or (_stock(backup, path) if backup else None)
+
+def _stock(keyword, path):
     try:
         r = requests.get("https://pixabay.com/api/videos/", params={"key": os.environ["PIXABAY_API_KEY"], "q": keyword,
-            "safesearch": "true", "per_page": 12}, timeout=30)
+            "safesearch": "true", "per_page": 20, "min_width": 1080}, timeout=30)
         r.raise_for_status()
-        for h in r.json().get("hits", []):
+        hits = r.json().get("hits", []); random.shuffle(hits)
+        for h in hits:
             v = h["videos"].get("medium") or h["videos"].get("small")
             if v and v.get("url") and v["url"] not in USED_CLIPS:
                 USED_CLIPS.add(v["url"])
@@ -118,13 +137,24 @@ def stock(keyword, path):
         print("stock failed for", keyword, ":", e)
     return None
 
+PALETTES = [((255, 214, 10), (13, 27, 42)), ((46, 204, 113), (10, 30, 24)), ((255, 99, 71), (30, 14, 20)), ((0, 200, 255), (8, 18, 38))]
+
 def thumb(title, topic):
-    """1280x720 thumbnail: big bold title on the brand background."""
-    im = Image.new("RGB", (1280, 720), BG); d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, 40, 720], fill=ACCENT); d.text((90, 70), BRAND.upper(), font=font(52, True), fill=ACCENT)
-    t = title.replace("#shorts", "").strip(); y = 190
-    for line in textwrap.wrap(t, 18)[:4]:
-        d.text((90, y), line, font=font(104, True), fill=INK); y += 125
+    """1280x720 thumbnail: a darkened frame from the video, big bold title, colours that change from video to video."""
+    acc, bg = random.choice(PALETTES)
+    im = Image.new("RGB", (1280, 720), bg)
+    f = f"{OUT}/s0_bg.mp4"
+    if os.path.exists(f):
+        try:
+            run("ffmpeg", "-y", "-ss", "1", "-i", f, "-frames:v", "1", f"{OUT}/frame.png")
+            im = Image.open(f"{OUT}/frame.png").convert("RGB").resize((1280, 720))
+            im = Image.blend(im, Image.new("RGB", (1280, 720), bg), 0.62)
+        except Exception: pass
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 40, 720], fill=acc); d.text((90, 60), BRAND.upper(), font=font(52, True), fill=acc)
+    t = title.replace("#shorts", "").strip(); y = 170
+    for line in textwrap.wrap(t, 16)[:4]:
+        d.text((90, y), line, font=font(112, True), fill=(255, 255, 255), stroke_width=5, stroke_fill=(0, 0, 0)); y += 135
     im.save(f"{OUT}/thumb.jpg", quality=90)
 
 def run(*a): subprocess.run(a, check=True, capture_output=True)
@@ -169,13 +199,14 @@ def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
     os.makedirs(OUT, exist_ok=True)
     s = script(topic); sc = s["scenes"]
+    json.dump(s, open(f"{OUT}/script.json", "w"), indent=1)
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
         words = asyncio.run(voice(c["narration"], aud)); ass = f"{OUT}/s{i}.ass"
-        if SHORT: captions(words, ass, W, H)
-        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4") if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
-        pos = slide(img, c["heading"], c["bullets"], i + 1, len(sc), overlay=bool(bg))
+        if SHORT: captions(align(speakable(c["narration"]).split(), words), ass, W, H)
+        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4", c.get("keyword2")) if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
+        pos = slide(img, c["heading"], c.get("bullets", []), i + 1, len(sc), overlay=bool(bg))
         n = len(pos); ticks = []
         for k, (x, y, sz) in enumerate(pos):
             tp = f"{OUT}/s{i}_t{k}.png"; tick(tp, x, y, sz)
