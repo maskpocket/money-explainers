@@ -21,7 +21,7 @@ BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
 
 PROMPT_SHORT = """Write a 40-50 second YouTube Short for people aged 16-30 about: "{topic}".
 Sound like a hyped but honest older sibling. Scene 1 is a scroll-stopping hook under 12 words: a surprising number, a mistake they are making right now, or a bold question. Then a tiny real story with a first name, an age and exact numbers (for example Kwame, 19, selling phone cases), then the simple move that worked, then end with one challenge to do today and a reason to follow for more.
-Punchy short sentences, plain words, no jargon, no get-rich promises. General education only.
+Punchy short sentences, plain words, no jargon, no get-rich promises.
 Return ONLY JSON: {{"title": str (under 60 chars, curiosity or a number, add #shorts), "description": str, "tags": [str],
 "scenes": [{{"keyword": str (2 real-world words a camera can film, like hands holding phone or counting money; never an app, website or brand name), "keyword2": str (a different filmable backup, 2 words), "heading": str (max 4 words, punchy, like Stop doing this), "narration": str (12-22 words)}}]}}
 Use 6 to 7 scenes."""
@@ -29,7 +29,6 @@ Use 6 to 7 scenes."""
 PROMPT = """Write a 4-5 minute YouTube explainer for adults about: "{topic}".
 Audience: beginners, English speakers worldwide. Tone: calm, clear, friendly, no hype, no get-rich promises.
 Use plain words, one concrete example with numbers, and end with one action the viewer can take today.
-General education only, not personal financial advice.
 Return ONLY JSON: {{"title": str (under 70 chars), "description": str, "tags": [str],
 "scenes": [{{"keyword": str (1-2 plain English words for stock footage, concrete and visual, e.g. "coins", "calculator", "city"), "heading": str (max 6 words), "bullets": [str, max 3, each max 9 words], "narration": str (40-70 words)}}]}}
 Use 9 to 12 scenes."""
@@ -239,7 +238,7 @@ def main():
         "[1:a]volume=0.4[m];[0:a][m]amix=inputs=2:weights=1 0.5:duration=first:normalize=0,alimiter=limit=0.95[o]",
         "-map", "0:v", "-map", "[o]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", dur, f"{OUT}/video.mp4")
     thumb(s["title"], topic)
-    json.dump({"title": s["title"], "description": s["description"] + "\n\nGeneral education only, not personal financial advice.",
+    json.dump({"title": s["title"], "description": s["description"],
                "tags": s["tags"], "mode": MODE}, open(f"{OUT}/meta.json", "w"), indent=2)
     print("Done:", s["title"])
 
