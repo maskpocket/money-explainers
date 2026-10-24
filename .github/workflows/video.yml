@@ -52,6 +52,12 @@ jobs:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           FB_PUBLISHED: "true"
+      - if: ${{ !cancelled() && inputs.upload != 'false' }}
+        run: python upload_instagram.py
+        continue-on-error: true
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
       - run: |
           git config user.name maskpocket
           git config user.email maskpocket@users.noreply.github.com

@@ -16,4 +16,6 @@ if (-not $p) { $p = $pages[0] }
 Write-Host ("Using: " + $p.name)
 $p.access_token | gh secret set FB_PAGE_TOKEN -R $repo
 $p.id | gh secret set FB_PAGE_ID -R $repo
+$ig = (Invoke-RestMethod "$g/$($p.id)?fields=instagram_business_account&access_token=$($p.access_token)").instagram_business_account.id
+if ($ig) { $ig | gh secret set IG_USER_ID -R $repo; Write-Host "Instagram account id saved." } else { Write-Host "No Instagram account linked to this Page." }
 Write-Host "Done. Secrets saved."
