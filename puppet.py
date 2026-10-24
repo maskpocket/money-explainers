@@ -27,7 +27,7 @@ def face(base, open_, blink, bounce):
     im = base.copy()
     d = ImageDraw.Draw(im, "RGBA")
     if open_ > 0.08:
-        w, h = 70 + 55 * open_, 12 + 80 * open_
+        w, h = 52 + 38 * open_, 8 + 52 * open_
         x, y = MOUTH[0], MOUTH[1] + h * 0.15
         d.ellipse([x - w - 6, y - h - 6, x + w + 6, y + h + 6], fill=(150, 70, 75, 255))
         d.ellipse([x - w, y - h, x + w, y + h], fill=(55, 12, 20, 255))
