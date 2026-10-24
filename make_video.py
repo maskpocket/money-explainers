@@ -169,8 +169,6 @@ def main():
     topic = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].strip() else pick_topic()
     os.makedirs(OUT, exist_ok=True)
     s = script(topic); sc = s["scenes"]
-    sc.append({"heading": BRAND, "bullets": ["General education only.", "Not personal financial advice."],
-               "narration": "General education only, not financial advice."})
     clips = []
     for i, c in enumerate(sc):
         img, aud, clip = f"{OUT}/s{i}.png", f"{OUT}/s{i}.mp3", f"{OUT}/s{i}.mp4"
