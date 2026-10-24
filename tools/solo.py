@@ -21,7 +21,7 @@ def dur(p): return float(subprocess.run(["ffprobe", "-v", "error", "-show_entrie
 
 
 PROMPT = f"""Write a 3 minute talk to camera by KOFI, a 25 year old who started from nothing, speaking to young people in a cinema lobby mood, about: "{TOPIC}".
-Total about 430 words, split into exactly 6 parts of 65-80 words each. Part 1 opens with a scroll-stopping line under 12 words. Include one real story with a first name, an age and exact numbers (digits), where to look for help (family, savings groups, small grants, mentors, learning a skill), three simple moves, and a challenge to do today. Last part asks viewers to follow.
+Total about 430 words (at least 400), split into exactly 6 parts of 65-80 words each, so each part is 5-7 full sentences. Part 1 opens with a scroll-stopping line under 12 words. Include one real story with a first name, an age and exact numbers (digits), where to look for help (family, savings groups, small grants, mentors, learning a skill), three simple moves, and a challenge to do today. Last part asks viewers to follow.
 Real spoken English, contractions, short sentences, warm and motivating, no jargon, no get-rich promises, no hype words. General education only, not financial advice.
 Return ONLY JSON: {{"title": str (under 60 chars, add #shorts), "description": str, "tags": [str], "parts": [str]}}"""
 
@@ -70,7 +70,11 @@ def talk(wav, i):
     return None
 
 
-data = llm(PROMPT); parts_txt = data["parts"]; print(data["title"], len(parts_txt), "parts", sum(len(p.split()) for p in parts_txt), "words")
+for _ in range(4):
+    data = llm(PROMPT); parts_txt = [str(p) for p in data["parts"]]
+    if len(parts_txt) == 6 and sum(len(p.split()) for p in parts_txt) >= 380: break
+    print("script too short, retrying", sum(len(p.split()) for p in parts_txt))
+print(data["title"], len(parts_txt), "parts", sum(len(p.split()) for p in parts_txt), "words")
 json.dump(data, open("out/solo/script.json", "w"), indent=1)
 flux(SHOT, "out/solo/kofi.jpg")
 
