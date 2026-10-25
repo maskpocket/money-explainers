@@ -140,8 +140,27 @@ def stock(keyword, path, backup=None):
         if kw and _stock(kw, path): return path
     return None
 
+def _pexels(keyword, path):
+    """Download one Pexels clip (HD, portrait preferred) for the keyword."""
+    try:
+        r = requests.get("https://api.pexels.com/videos/search", headers={"Authorization": os.environ["PEXELS_API_KEY"]},
+            params={"query": keyword, "per_page": 30, "orientation": "portrait" if SHORT else "landscape", "size": "medium"}, timeout=30)
+        r.raise_for_status(); vids = r.json().get("videos", []); random.shuffle(vids)
+        for v in vids:
+            files = [f for f in v.get("video_files", []) if f.get("link") and f.get("file_type") == "video/mp4" and (f.get("width") or 0) >= 720]
+            files.sort(key=lambda f: abs((f.get("width") or 0) - 1080))
+            if files and files[0]["link"] not in USED_CLIPS:
+                USED_CLIPS.add(files[0]["link"])
+                open(path, "wb").write(requests.get(files[0]["link"], timeout=120).content)
+                return path
+    except Exception as e:
+        print("pexels failed for", keyword, ":", e)
+    return None
+
 def _stock(keyword, path):
-    words = [w.rstrip("s") for w in keyword.lower().split() if len(w) > 2]
+    if os.environ.get("PEXELS_API_KEY") and _pexels(keyword, path): return path
+    if not os.environ.get("PIXABAY_API_KEY"): return None
+    words =[w.rstrip("s") for w in keyword.lower().split() if len(w) > 2]
     try:
         r = requests.get("https://pixabay.com/api/videos/", params={"key": os.environ["PIXABAY_API_KEY"], "q": keyword,
             "safesearch": "true", "per_page": 30, "min_width": 1080}, timeout=30)
@@ -259,7 +278,7 @@ def main():
     voiced = []
     for i, c in enumerate(sc):
         words = asyncio.run(voice(c["narration"], f"{OUT}/s{i}.mp3"))
-        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4", c.get("keyword2")) if c.get("keyword") and os.environ.get("PIXABAY_API_KEY") else None
+        bg = stock(c["keyword"], f"{OUT}/s{i}_bg.mp4", c.get("keyword2")) if c.get("keyword") and (os.environ.get("PEXELS_API_KEY") or os.environ.get("PIXABAY_API_KEY")) else None
         voiced.append((words, bg))
     import music; music.make(f"{OUT}/music.wav")  # background music bed (generated, so no licensing)
     if SHORT:
