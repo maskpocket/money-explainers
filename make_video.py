@@ -21,11 +21,26 @@ OUT = "out"
 BG, INK, ACCENT = (13, 27, 42), (240, 244, 248), (46, 204, 113)
 
 PROMPT_SHORT = """Write a 40-50 second YouTube Short for people aged 16-30 about: "{topic}".
-Sound like a hyped but honest older sibling. Scene 1 is a scroll-stopping hook under 12 words: a surprising number, a mistake they are making right now, or a bold question. Then a tiny real story with a first name, an age and exact numbers (for example Kwame, 19, selling phone cases), then the simple move that worked, then end with one challenge to do today and a reason to follow for more.
-Punchy short sentences, plain words, no jargon, no get-rich promises.
+Format for this video: {fmt}
+Voice: a calm, confident, professional narrator who respects the viewer. Not hype, not a guru, not an advert, never selling or promoting anything. Speak to the viewer as "you".
+Core message: time matters, so the best moment to start is now, and saving and spending wisely matter as much as earning more. Say it through the facts of the topic, never as a slogan or a lecture.
+Do NOT invent a person or a success story: no first names, no "someone saved X" stories, no made-up testimonials. Use real concepts, simple maths, comparisons and everyday situations instead.
+Scene 1 is a scroll-stopping hook under 12 words (a surprising number, a costly mistake, or a sharp question). End with one small action to do today and a short reason to follow for more.
+Plain words, no jargon, no get-rich promises.
 Return ONLY JSON: {{"title": str (under 60 chars, curiosity or a number, add #shorts), "description": str, "tags": [str],
 "scenes": [{{"keyword": str (2 real-world words a camera can film, like hands holding phone or counting money; never an app, website or brand name), "keyword2": str (a different filmable backup, 2 words), "heading": str (max 4 words, punchy, like Stop doing this), "narration": str (12-22 words)}}]}}
-Use 6 to 7 scenes."""
+Use 6 to 7 scenes. Every scene needs a different filmable keyword so the footage never repeats."""
+
+FORMATS = [
+    "The maths of waiting: show with simple numbers what one year of delay costs, then the first step.",
+    "Myth versus fact: bust one common money belief, then give the correct rule.",
+    "Three mistakes: name three common money mistakes on this topic and the quick fix for each.",
+    "A day in your life: walk through an ordinary day and show where money quietly leaks or grows, then what to change.",
+    "Compare two choices: put two realistic options side by side with numbers, and say which wins and why.",
+    "The rule of thumb: teach one simple rule or formula on this topic and show how to use it in a minute.",
+    "Before and after: contrast a common habit with a better one, using the same numbers for both.",
+    "Questions people ask: answer the one question most beginners get wrong about this topic.",
+]
 
 PROMPT = """Write a 4-5 minute YouTube explainer for adults about: "{topic}".
 Audience: beginners, English speakers worldwide. Tone: calm, clear, friendly, no hype, no get-rich promises.
@@ -58,7 +73,7 @@ def _cloudflare(p):
     return res if isinstance(res, str) else json.dumps(res)
 
 def script(topic):
-    p = (PROMPT_SHORT if SHORT else PROMPT).format(topic=topic) + HUMAN
+    p = (PROMPT_SHORT if SHORT else PROMPT).format(topic=topic, fmt=random.choice(FORMATS)) + HUMAN
     for name, fn in (("groq", _groq), ("cloudflare", _cloudflare)):
         try:
             raw = fn(p); s = json.loads(raw[raw.index('{'):raw.rindex('}') + 1])
@@ -188,7 +203,7 @@ def pick_topic():
     area = AREAS[int(os.environ.get("GITHUB_RUN_NUMBER", "0")) % len(AREAS)]
     recent = "\n".join(used[-60:])
     p = (f'Suggest 25 different YouTube video topics for beginners about personal finance and a money-minded, wealth-building mindset, focused on: {area}. '
-         f'Each is a short plain title (4-10 words), specific and not generic. Do NOT repeat or closely resemble these:\n{recent}\n'
+         f'Each is a short plain title (4-10 words), specific and not generic, about a different real-life situation (work, school, rent, phones, transport, family, business, scams, savings goals) in a professional, serious tone. Stress why starting now beats waiting. No people names. Do NOT repeat or closely resemble these:\n{recent}\n'
          'Return ONLY a JSON array of strings.')
     for fn in (_groq, _cloudflare):
         try:
